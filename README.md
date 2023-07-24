@@ -49,13 +49,13 @@ You can refer to this guide to get the client id and secret
 You can access all BigGo API PMS resources using the api object. Simply use the object obtained from `new BiggoAPIPMS()`. For example:
 
 ```python
-// Get list of platforms the user has access.
+# Get list of platforms the user has access.
 platformList = await api.get_Platform_List()
-// Get list of groups in the platform.
+# Get list of groups in the platform.
 groupList = await api.get_Group_List('<Platform ID>')
-// Get list of reports in the platform.
+# Get list of reports in the platform.
 reportList = await api.get_Report_List('<Platform ID>')
-// Get file content or save report as file.
+# Get file content or save report as file.
 reportJson = await api.get_Report('<Platform ID>', '<Report ID>', 'json')
 ```
 
