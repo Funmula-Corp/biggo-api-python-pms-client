@@ -51,7 +51,12 @@ class BiggoAPIPMS:
                 'Content-Type': 'application/x-www-form-urlencoded'
             })
 
-            response_data = response.json()
+            try:
+                response_data = response.json()
+            except ValueError:
+                raise BigGoAuthError(
+                    f"Invalid response from auth server (HTTP {response.status_code}): {response.text[:200]}"
+                )
 
             if 'error' in response_data:
                 raise BigGoAuthError(response_data['error']['message'], response_data['error']['code'])
@@ -69,9 +74,6 @@ class BiggoAPIPMS:
             raise err
         except Exception as err:
             raise BigGoAuthError(str(err))
-    
-    def is_token_expired(self) -> bool:
-        return time.time() >= self.expiresAt
 
     async def request(self, prams):
         headers = {
@@ -140,7 +142,7 @@ class BiggoAPIPMS:
                 'userList': platform['userid_list'],
                 'emailList': platform['email_list']
             }
-            for platform in data['data']
+            for platform in (data.get('data') or [])
         ]
 
     async def get_group_list(self, platformID):
@@ -155,14 +157,14 @@ class BiggoAPIPMS:
             {
                 'id': group['_id'],
                 'schedule': group['crontab_setting'],
-                'isScheduleOn': group['crontab'] == 'true',
+                'isScheduleOn': group.get('crontab') == 'true',
                 'name': group['group_name'],
                 'district': group['district'],
                 'status': group['status'],
                 'exportCount': group['export_count'],
                 'sampleCount': group['sample_count']
             }
-            for group in data['data']
+            for group in (data.get('data') or [])
         ]
     
     async def get_report_list(self, platformID, options=None):
@@ -171,13 +173,15 @@ class BiggoAPIPMS:
             'pms_platformid': platformID,
             'size': options.get('size', 5000),
             'in_sort': options.get('sort', 'desc'),
-            'in_form': options.get('startIndex', 0),
-            'in_opt': {
-                'pms_groupid': ','.join(options.get('groupID', [])),
-                'start': options.get('startDate') and options['startDate'].strftime('%Y-%m-%d'),
-                'end': options.get('endDate') and options['endDate'].strftime('%Y-%m-%d'),
-            } if options.get('groupID') or options.get('startDate') or options.get('endDate') else None
+            'in_from': options.get('startIndex', 0),
         }
+        # in_opt 需展平成 in_opt[xxx]=value，requests 無法序列化巢狀 dict
+        if options.get('groupID'):
+            extra_params['in_opt[pms_groupid]'] = ','.join(options['groupID'])
+        if options.get('startDate'):
+            extra_params['in_opt[start]'] = options['startDate'].strftime('%Y-%m-%d')
+        if options.get('endDate'):
+            extra_params['in_opt[end]'] = options['endDate'].strftime('%Y-%m-%d')
         data = await self.request({
             'path': '/export',
             'method': 'GET',
@@ -192,7 +196,7 @@ class BiggoAPIPMS:
                 'district': report['district'],
                 'sampleSize': report['sample_size']
             }
-            for report in data['data']
+            for report in (data.get('data') or [])
         ]
 
     async def get_report(self, platformID, reportID, fileType, options=None):
@@ -218,7 +222,9 @@ class BiggoAPIPMS:
         if not options.get('saveAsFile'):
             return file_content
 
-        file_name = options.get('fileName') or res.headers.get('content-disposition', '').split('filename=')[1].strip('"') or f'output.{fileType}'
+        content_disposition = res.headers.get('content-disposition', '')
+        parsed_name = content_disposition.split('filename=')[1].strip('"') if 'filename=' in content_disposition else None
+        file_name = options.get('fileName') or parsed_name or f'output.{fileType}'
         save_dir = options.get('saveDir') or '.'
         if not os.path.exists(save_dir):
             os.makedirs(save_dir, exist_ok=True)
